@@ -1,0 +1,953 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>VoicelyAI 存股助理</title>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@300;400;500;700&family=JetBrains+Mono:wght@400;600&display=swap');
+
+    :root {
+      --bg: #0a0b0d;
+      --surface: #12141c;
+      --surface2: #1a1d29;
+      --border: #232738;
+      --accent: #3b82f6;
+      --accent-glow: rgba(59, 130, 246, 0.15);
+      --success: #10b981;
+      --success-glow: rgba(16, 185, 129, 0.15);
+      --error: #ef4444;
+      --error-glow: rgba(239, 68, 68, 0.15);
+      --warning: #f59e0b;
+      --text: #f3f4f6;
+      --text-dim: #9ca3af;
+      --text-dimmer: #4b5563;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      font-family: 'Noto Sans TC', sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding: 24px 16px;
+      position: relative;
+      overflow-x: hidden;
+    }
+
+    /* Background subtle grid */
+    body::before {
+      content: '';
+      position: fixed;
+      inset: 0;
+      background-image:
+        linear-gradient(var(--border) 1px, transparent 1px),
+        linear-gradient(90deg, var(--border) 1px, transparent 1px);
+      background-size: 40px 40px;
+      opacity: 0.2;
+      pointer-events: none;
+    }
+
+    .container {
+      width: 100%;
+      max-width: 480px;
+      position: relative;
+      z-index: 1;
+    }
+
+    /* Header */
+    .header {
+      text-align: center;
+      margin-bottom: 36px;
+    }
+
+    .header-label {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 11px;
+      letter-spacing: 3px;
+      text-transform: uppercase;
+      color: var(--accent);
+      margin-bottom: 10px;
+      opacity: 0.9;
+    }
+
+    .header h1 {
+      font-size: 26px;
+      font-weight: 700;
+      color: var(--text);
+      letter-spacing: -0.5px;
+    }
+
+    .header p {
+      font-size: 13px;
+      color: var(--text-dim);
+      margin-top: 6px;
+      font-weight: 300;
+    }
+
+    /* Main card */
+    .card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 20px;
+      padding: 32px 28px;
+      margin-bottom: 16px;
+      box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
+    }
+
+    /* Recording visualizer */
+    .visualizer-wrap {
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      height: 80px;
+      margin-bottom: 28px;
+      gap: 4px;
+    }
+
+    .bar {
+      width: 4px;
+      border-radius: 2px;
+      background: var(--border);
+      transition: height 0.1s ease, background 0.3s ease;
+    }
+
+    .bar.active {
+      background: var(--accent);
+      animation: pulse-bar 0.5s ease-in-out infinite alternate;
+    }
+
+    @keyframes pulse-bar {
+      from {
+        opacity: 0.6;
+      }
+
+      to {
+        opacity: 1;
+      }
+    }
+
+    /* Status */
+    .status {
+      text-align: center;
+      margin-bottom: 28px;
+    }
+
+    .status-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 6px 14px;
+      border-radius: 100px;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 12px;
+      letter-spacing: 1px;
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      color: var(--text-dim);
+      transition: all 0.3s ease;
+    }
+
+    .status-badge.recording {
+      background: rgba(239, 68, 68, 0.1);
+      border-color: var(--error);
+      color: var(--error);
+    }
+
+    .status-badge.uploading {
+      background: rgba(59, 130, 246, 0.1);
+      border-color: var(--accent);
+      color: var(--accent);
+    }
+
+    .status-badge.success {
+      background: rgba(16, 185, 129, 0.1);
+      border-color: var(--success);
+      color: var(--success);
+    }
+
+    .status-badge.error {
+      background: rgba(239, 68, 68, 0.1);
+      border-color: var(--error);
+      color: var(--error);
+    }
+
+    .dot {
+      width: 7px;
+      height: 7px;
+      border-radius: 50%;
+      background: currentColor;
+    }
+
+    .dot.blink {
+      animation: blink 1s ease-in-out infinite;
+    }
+
+    @keyframes blink {
+
+      0%,
+      100% {
+        opacity: 1;
+      }
+
+      50% {
+        opacity: 0.2;
+      }
+    }
+
+    /* Timer */
+    .timer {
+      text-align: center;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 36px;
+      font-weight: 600;
+      color: var(--text);
+      margin-bottom: 28px;
+      letter-spacing: 2px;
+      transition: color 0.3s;
+    }
+
+    .timer.recording {
+      color: var(--error);
+    }
+
+    /* Button */
+    .btn-wrap {
+      display: flex;
+      justify-content: center;
+    }
+
+    .btn {
+      width: 72px;
+      height: 72px;
+      border-radius: 50%;
+      border: none;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: all 0.2s ease;
+      position: relative;
+      outline: none;
+    }
+
+    .btn-record {
+      background: var(--error);
+      box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.4);
+    }
+
+    .btn-record.pulse {
+      animation: ring-pulse 1.5s ease-out infinite;
+    }
+
+    @keyframes ring-pulse {
+      0% {
+        box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.5);
+      }
+
+      70% {
+        box-shadow: 0 0 0 18px rgba(239, 68, 68, 0);
+      }
+
+      100% {
+        box-shadow: 0 0 0 0 rgba(239, 68, 68, 0);
+      }
+    }
+
+    .btn-stop {
+      background: var(--surface2);
+      border: 2px solid var(--border);
+      box-shadow: 0 0 20px var(--accent-glow);
+    }
+
+    .btn-stop:hover {
+      background: var(--border);
+    }
+
+    .btn-record:hover {
+      filter: brightness(1.1);
+    }
+
+    .btn:active {
+      transform: scale(0.94);
+    }
+
+    .btn svg {
+      pointer-events: none;
+    }
+
+    /* Result section */
+    .result {
+      display: none;
+      margin-top: 24px;
+      animation: slide-up 0.4s ease;
+    }
+
+    .result.show {
+      display: block;
+    }
+
+    @keyframes slide-up {
+      from {
+        opacity: 0;
+        transform: translateY(12px);
+      }
+
+      to {
+        opacity: 1;
+        transform: translateY(0);
+      }
+    }
+
+    .result-divider {
+      height: 1px;
+      background: var(--border);
+      margin-bottom: 20px;
+    }
+
+    .result-row {
+      display: flex;
+      gap: 12px;
+      margin-bottom: 14px;
+      align-items: flex-start;
+    }
+
+    .result-label {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 10px;
+      letter-spacing: 1.5px;
+      text-transform: uppercase;
+      color: var(--text-dim);
+      min-width: 56px;
+      padding-top: 2px;
+      flex-shrink: 0;
+    }
+
+    .result-value {
+      font-size: 14px;
+      color: var(--text);
+      line-height: 1.6;
+      font-weight: 400;
+    }
+
+    .result-value.mono {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 13px;
+    }
+
+    .tag {
+      display: inline-block;
+      padding: 2px 10px;
+      border-radius: 100px;
+      font-size: 12px;
+      font-family: 'JetBrains Mono', monospace;
+      margin: 2px 3px 2px 0;
+    }
+
+    .tag-buy {
+      background: var(--success-glow);
+      color: var(--success);
+      border: 1px solid rgba(16, 185, 129, 0.3);
+    }
+
+    .tag-sell {
+      background: var(--error-glow);
+      color: var(--error);
+      border: 1px solid rgba(239, 68, 68, 0.3);
+    }
+
+    .tag-label {
+      background: var(--surface2);
+      color: var(--text-dim);
+      border: 1px solid var(--border);
+    }
+
+    /* Error message */
+    .error-msg {
+      text-align: center;
+      color: var(--error);
+      font-size: 13px;
+      margin-top: 16px;
+      display: none;
+    }
+
+    .error-msg.show {
+      display: block;
+    }
+
+    /* Footer */
+    .footer {
+      text-align: center;
+      font-size: 11px;
+      color: var(--text-dimmer);
+      font-family: 'JetBrains Mono', monospace;
+      letter-spacing: 1px;
+    }
+
+    /* Spinner */
+    .spinner {
+      width: 18px;
+      height: 18px;
+      border: 2px solid rgba(59, 130, 246, 0.3);
+      border-top-color: var(--accent);
+      border-radius: 50%;
+      animation: spin 0.7s linear infinite;
+      display: inline-block;
+    }
+
+    @keyframes spin {
+      to {
+        transform: rotate(360deg);
+      }
+    }
+
+    /* Sync Button */
+    .sync-btn {
+      background: transparent;
+      border: 1px solid var(--border);
+      color: var(--text-dim);
+      padding: 8px 16px;
+      border-radius: 8px;
+      font-family: 'Noto Sans TC', sans-serif;
+      font-size: 12px;
+      cursor: pointer;
+      transition: all 0.2s;
+      display: inline-flex;
+      align-items: center;
+    }
+
+    .sync-btn:hover {
+      background: var(--surface2);
+      color: var(--text);
+      border-color: var(--accent);
+    }
+
+    .sync-btn:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+
+    /* Instructions card */
+    .instructions-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 20px;
+      padding: 20px;
+      margin-bottom: 16px;
+      box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
+    }
+
+    .instructions-title {
+      font-size: 13px;
+      font-weight: 700;
+      color: var(--accent);
+      margin-bottom: 12px;
+      letter-spacing: 0.5px;
+    }
+
+    .instruction-item {
+      display: flex;
+      align-items: flex-start;
+      gap: 8px;
+      margin-bottom: 10px;
+    }
+
+    .instruction-item:last-child {
+      margin-bottom: 0;
+    }
+
+    .instruction-type {
+      font-size: 10px;
+      padding: 1px 6px;
+      border-radius: 4px;
+      flex-shrink: 0;
+      margin-top: 3px;
+    }
+
+    .instruction-text {
+      font-size: 12px;
+      color: var(--text-dim);
+      line-height: 1.5;
+    }
+
+    /* Editable form styles */
+    .form-group {
+      margin-bottom: 14px;
+    }
+
+    .form-label {
+      display: block;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 10px;
+      letter-spacing: 1.5px;
+      text-transform: uppercase;
+      color: var(--text-dim);
+      margin-bottom: 4px;
+    }
+
+    .form-input {
+      width: 100%;
+      padding: 8px 12px;
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      color: var(--text);
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 13px;
+      outline: none;
+      transition: border-color 0.2s;
+    }
+
+    .form-input:focus {
+      border-color: var(--accent);
+    }
+
+    .form-row {
+      display: flex;
+      gap: 12px;
+    }
+
+    .form-row .form-group {
+      flex: 1;
+    }
+
+    .confirm-btn {
+      width: 100%;
+      padding: 12px 24px;
+      background: var(--accent);
+      color: #fff;
+      border: none;
+      border-radius: 10px;
+      font-family: 'Noto Sans TC', sans-serif;
+      font-size: 14px;
+      font-weight: 500;
+      cursor: pointer;
+      transition: all 0.2s;
+      letter-spacing: 0.5px;
+    }
+
+    .confirm-btn:hover {
+      filter: brightness(1.1);
+    }
+
+    .confirm-btn:active {
+      transform: scale(0.98);
+    }
+
+    .confirm-btn:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+
+    .edit-hint {
+      text-align: center;
+      font-size: 11px;
+      color: var(--warning);
+      margin-bottom: 16px;
+      font-family: 'Noto Sans TC', sans-serif;
+    }
+  </style>
+</head>
+
+<body>
+
+  <div class="container">
+    <div class="header">
+      <div class="header-label">VoicelyAI Stock</div>
+      <h1>VoicelyAI 存股助理</h1>
+      <p>開啟頁面後自動錄音，說完按停止</p>
+    </div>
+
+    <div class="card">
+      <!-- Visualizer bars -->
+      <div class="visualizer-wrap" id="visualizer">
+        <!-- bars injected by JS -->
+      </div>
+
+      <!-- Status badge -->
+      <div class="status">
+        <span class="status-badge recording" id="statusBadge">
+          <span class="dot blink"></span>
+          <span id="statusText">錄音中</span>
+        </span>
+      </div>
+
+      <!-- Timer -->
+      <div class="timer" id="timer">00:00</div>
+
+      <!-- Button -->
+      <div class="btn-wrap">
+        <button class="btn btn-stop" id="mainBtn" onclick="stopRecording()" title="停止並上傳">
+          <svg width="22" height="22" viewBox="0 0 22 22" fill="none">
+            <rect x="4" y="4" width="14" height="14" rx="3" fill="#e8e8f0" />
+          </svg>
+        </button>
+      </div>
+
+      <!-- Error message -->
+      <div class="error-msg" id="errorMsg"></div>
+
+      <!-- Result -->
+      <div class="result" id="result">
+        <div class="result-divider"></div>
+        <div class="edit-hint">AI 已分析完畢，請確認並修改下方內容後儲存</div>
+        <div id="resultContent"></div>
+        <div style="margin-top: 20px;">
+          <button class="confirm-btn" id="confirmBtn" onclick="confirmAndSave()">
+            ✓ 確認儲存並同步至試算表
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Instructions Card -->
+    <div class="instructions-card">
+      <div class="instructions-title">💡 語音交易範例</div>
+      <div class="instruction-item">
+        <div class="instruction-type tag-buy">買入</div>
+        <div class="instruction-text">「幫我紀錄，今天以 3552 元買入 3 股台股聯發科。」</div>
+      </div>
+      <div class="instruction-item">
+        <div class="instruction-type tag-sell">賣出</div>
+        <div class="instruction-text">「賣出 500 股台積電，成交價是 850 元。」</div>
+      </div>
+    </div>
+
+    <div class="footer">
+      <div>tap to stop · auto upload</div>
+      <div style="margin-top: 15px;">
+        <button class="sync-btn" id="syncBtn" onclick="syncAllRecords()">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+            stroke-linecap="round" stroke-linejoin="round" style="margin-right: 6px;">
+            <path d="M21.5 2v6h-6M2.5 22v-6h6M2 11.5a10 10 0 0 1 18.8-4.3M22 12.5a10 10 0 0 1-18.8 4.3" />
+          </svg>
+          同步全部至試算表
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // ── Config ──────────────────────────────────────────────
+    const SERVER_URL = `/upload`;
+
+    // ── State ───────────────────────────────────────────────
+    let mediaRecorder = null;
+    let audioChunks = [];
+    let timerInterval = null;
+    let seconds = 0;
+    let analyserNode = null;
+    let animFrameId = null;
+    let autoStopTimeout = null;
+    let pendingRawText = '';
+    let pendingCleanText = '';
+    let pendingAnalysis = null;
+
+    // ── Visualizer setup ────────────────────────────────────
+    const vizWrap = document.getElementById('visualizer');
+    const BAR_COUNT = 32;
+    const bars = [];
+
+    for (let i = 0; i < BAR_COUNT; i++) {
+      const b = document.createElement('div');
+      b.className = 'bar';
+      b.style.height = '8px';
+      vizWrap.appendChild(b);
+      bars.push(b);
+    }
+
+    function animateBars() {
+      if (!analyserNode) return;
+      const data = new Uint8Array(analyserNode.frequencyBinCount);
+      analyserNode.getByteFrequencyData(data);
+      const step = Math.floor(data.length / BAR_COUNT);
+      bars.forEach((b, i) => {
+        const val = data[i * step] || 0;
+        const h = Math.max(6, (val / 255) * 60);
+        b.style.height = h + 'px';
+      });
+      animFrameId = requestAnimationFrame(animateBars);
+    }
+
+    function idleBars() {
+      bars.forEach((b, i) => {
+        b.classList.remove('active');
+        const h = 6 + Math.sin(i * 0.5) * 4;
+        b.style.height = h + 'px';
+      });
+    }
+
+    // ── Timer ───────────────────────────────────────────────
+    function startTimer() {
+      seconds = 0;
+      timerInterval = setInterval(() => {
+        seconds++;
+        const m = String(Math.floor(seconds / 60)).padStart(2, '0');
+        const s = String(seconds % 60).padStart(2, '0');
+        document.getElementById('timer').textContent = `${m}:${s}`;
+      }, 1000);
+    }
+
+    function stopTimer() {
+      clearInterval(timerInterval);
+    }
+
+    // ── Status helper ───────────────────────────────────────
+    function setStatus(state, text, extra = '') {
+      const badge = document.getElementById('statusBadge');
+      badge.className = `status-badge ${state}`;
+      if (state === 'uploading') {
+        badge.innerHTML = `<span class="spinner"></span><span>${text}</span>`;
+      } else {
+        badge.innerHTML = `<span class="dot${state === 'recording' ? ' blink' : ''}"></span><span>${text}</span>`;
+      }
+    }
+
+    // ── Start recording on load ──────────────────────────────
+    window.addEventListener('load', async () => {
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+
+        const audioCtx = new AudioContext();
+        const source = audioCtx.createMediaStreamSource(stream);
+        analyserNode = audioCtx.createAnalyser();
+        analyserNode.fftSize = 128;
+        source.connect(analyserNode);
+
+        bars.forEach(b => b.classList.add('active'));
+        animateBars();
+
+        mediaRecorder = new MediaRecorder(stream, { mimeType: getSupportedMime() });
+        audioChunks = [];
+
+        mediaRecorder.ondataavailable = e => {
+          if (e.data.size > 0) audioChunks.push(e.data);
+        };
+
+        mediaRecorder.onstop = uploadAudio;
+        mediaRecorder.start(100);
+
+        startTimer();
+        document.getElementById('timer').classList.add('recording');
+
+        // ── Auto stop after 19 seconds ───────────────────────────
+        autoStopTimeout = setTimeout(() => {
+          stopRecording();
+        }, 19000);
+
+      } catch (err) {
+        setStatus('error', '麥克風存取失敗');
+        showError('請允許瀏覽器使用麥克風，然後重新整理頁面');
+      }
+    });
+
+    // ── Stop ────────────────────────────────────────────────
+    function stopRecording() {
+      if (!mediaRecorder || mediaRecorder.state === 'inactive') return;
+      if (autoStopTimeout) {
+        clearTimeout(autoStopTimeout);
+        autoStopTimeout = null;
+      }
+      mediaRecorder.stop();
+      stopTimer();
+      cancelAnimationFrame(animFrameId);
+      idleBars();
+      bars.forEach(b => b.classList.remove('active'));
+      document.getElementById('timer').classList.remove('recording');
+      document.getElementById('mainBtn').disabled = true;
+      setStatus('uploading', '上傳中');
+    }
+
+    // ── Upload ───────────────────────────────────────────────
+    async function uploadAudio() {
+      const mime = getSupportedMime();
+      const ext = mime.includes('mp4') ? 'm4a' : 'webm';
+      const blob = new Blob(audioChunks, { type: mime });
+      const formData = new FormData();
+      formData.append('file', blob, `recording.${ext}`);
+
+      try {
+        const res = await fetch(SERVER_URL, { method: 'POST', body: formData });
+        const data = await res.json();
+
+        if (data.status === 'success') {
+          setStatus('success', '✓ 分析完成');
+          showEditableResult(data);
+        } else {
+          setStatus('error', '失敗');
+          showError(data.message || '伺服器回傳錯誤');
+        }
+      } catch (err) {
+        setStatus('error', '連線失敗');
+        showError('無法連線到伺服器，請確認服務是否啟動');
+      }
+    }
+
+    // ── Show editable result ─────────────────────────────────
+    function showEditableResult(data) {
+      pendingRawText = data.raw_text || '';
+      pendingCleanText = data.clean_text || data.raw_text || '';
+      pendingAnalysis = data.analysis || {};
+
+      const a = pendingAnalysis;
+      const sharesNum = parseInt(a.shares || 0);
+      const isSell = sharesNum < 0;
+      const actionLabel = isSell ? '賣出' : '買入';
+      const actionClass = isSell ? 'tag-sell' : 'tag-buy';
+      const absShares = Math.abs(sharesNum) || '—';
+
+      const market = a.market || '台股';
+      const currency = a.currency || 'TWD';
+      const exchangeRate = a.exchange_rate || 1;
+      const date = a.date || '—';
+
+      const html = `
+      <div class="result-row">
+        <span class="result-label">語音</span>
+        <span class="result-value">${esc(pendingCleanText)}</span>
+      </div>
+      <div class="result-row">
+        <span class="result-label">市場</span>
+        <span class="result-value">${esc(market)}</span>
+      </div>
+      <div class="result-row">
+        <span class="result-label">動作</span>
+        <span class="result-value">
+          <span class="tag ${actionClass}">${actionLabel}</span>
+          <span style="margin-left:8px;">${absShares} 股</span>
+        </span>
+      </div>
+      <div class="result-row">
+        <span class="result-label">幣別</span>
+        <span class="result-value">${esc(currency)}　匯率 ${exchangeRate}</span>
+      </div>
+      <div class="result-row">
+        <span class="result-label">日期</span>
+        <span class="result-value">${esc(date)}</span>
+      </div>
+
+      <div class="result-divider" style="margin:16px 0 8px;"></div>
+      <div class="edit-hint" style="margin-bottom:14px;">⚠️ 以下欄位請手動確認，AI 可能辨識有誤</div>
+
+      <div class="form-row">
+        <div class="form-group">
+          <label class="form-label">標的名稱</label>
+          <input class="form-input" id="editName" value="${escAttr(a.name || '')}" placeholder="公司名稱">
+        </div>
+        <div class="form-group">
+          <label class="form-label">代碼</label>
+          <input class="form-input" id="editSymbol" value="${escAttr(a.symbol || '')}" placeholder="TPE:2330">
+        </div>
+      </div>
+
+      <div class="form-group">
+        <label class="form-label">成交單價</label>
+        <input class="form-input" id="editPrice" type="number" step="any" value="${a.price || ''}" placeholder="成交價格">
+      </div>`;
+
+      document.getElementById('resultContent').innerHTML = html;
+      document.getElementById('result').classList.add('show');
+      document.getElementById('confirmBtn').disabled = false;
+      document.getElementById('confirmBtn').textContent = '✓ 確認儲存並同步至試算表';
+    }
+
+    // ── Confirm and save ────────────────────────────────────
+    async function confirmAndSave() {
+      const confirmBtn = document.getElementById('confirmBtn');
+      confirmBtn.disabled = true;
+      confirmBtn.textContent = '儲存中...';
+
+      // 收集表單資料：只覆蓋使用者可修改的欄位，其餘沿用 AI 分析
+      const editedAnalysis = {
+        ...pendingAnalysis,
+        name: document.getElementById('editName').value || pendingAnalysis.name,
+        symbol: document.getElementById('editSymbol').value || pendingAnalysis.symbol,
+        price: parseFloat(document.getElementById('editPrice').value) || pendingAnalysis.price || 0
+      };
+
+      try {
+        const res = await fetch('/confirm', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            analysis: editedAnalysis,
+            clean_text: pendingCleanText,
+            raw_text: pendingRawText
+          })
+        });
+        const data = await res.json();
+
+        if (data.status === 'success') {
+          confirmBtn.textContent = '✓ 已儲存' + (data.gas_synced ? '並同步' : '');
+          confirmBtn.style.background = 'var(--success)';
+          setStatus('success', '✓ 已儲存');
+        } else {
+          confirmBtn.textContent = '✗ 儲存失敗，點擊重試';
+          confirmBtn.style.background = 'var(--error)';
+          confirmBtn.disabled = false;
+        }
+      } catch (err) {
+        confirmBtn.textContent = '✗ 連線失敗，點擊重試';
+        confirmBtn.style.background = 'var(--error)';
+        confirmBtn.disabled = false;
+      }
+    }
+
+    function showError(msg) {
+      const el = document.getElementById('errorMsg');
+      el.textContent = msg;
+      el.classList.add('show');
+    }
+
+    // ── Helpers ──────────────────────────────────────────────
+    function esc(str) {
+      return String(str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    }
+
+    function escAttr(str) {
+      return String(str).replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    }
+
+    function getSupportedMime() {
+      const types = ['audio/mp4', 'audio/webm;codecs=opus', 'audio/webm', 'audio/ogg'];
+      for (const t of types) {
+        if (MediaRecorder.isTypeSupported(t)) return t;
+      }
+      return '';
+    }
+
+    async function syncAllRecords() {
+      const btn = document.getElementById('syncBtn');
+      const originalText = btn.innerHTML;
+      btn.disabled = true;
+      btn.innerHTML = `<span class="spinner" style="width:12px; height:12px; margin-right:6px;"></span>同步中...`;
+
+      try {
+        const res = await fetch('/sync', { method: 'POST' });
+        const data = await res.json();
+        if (data.status === 'success') {
+          alert(data.message);
+        } else {
+          alert('同步失敗: ' + data.message);
+        }
+      } catch (err) {
+        alert('連線失敗，請稍後再試');
+      } finally {
+        btn.disabled = false;
+        btn.innerHTML = originalText;
+      }
+    }
+  </script>
+</body>
+
+</html>

@@ -1,0 +1,29 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+
+# 環境變數（含 API Key，切勿提交）
+.env
+
+# 語音暫存檔
+temp_audio.*
+
+# 本機資料
+data/*.csv
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# macOS
+.DS_Store
+
+# Docker
+*.log
+
+# CodeBuddy
+.codebuddy/
