@@ -17,11 +17,9 @@ VoicelyAI/
 ├── entrypoint.sh           # Docker 容器啟動腳本
 ├── .env.example            # 環境變數範例（請複製為 .env）
 ├── .env                    # 環境變數（含 API Key，不提交 Git）
-├── .gitignore
+├── .gitignore              # Git 忽略規則
 ├── gas-trade-receiver.md   # Google Apps Script — 交易記錄接收端
 ├── gas-daily-snapshot.md   # Google Apps Script — 每日資產快照
-├── 腳本.md                 # 原始 GAS 備份（每日快照）
-├── 腳本2.md                # 原始 GAS 備份（交易接收）
 └── data/
     └── Stock Savings Record.csv  # 本機 CSV（自動產生）
 ```
