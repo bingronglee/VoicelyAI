@@ -1,37 +1,65 @@
 // ============================================
 //  gas-trade-receiver — VoicelyAI 交易記錄接收
-//  接收 app.py POST，逐格寫入「現有庫存明細」
-//  跳過 G, K, L, M 公式欄位，避免蓋掉公式
+//  接收 app.py POST，自動填入「現有庫存明細」
+//  自動寫入公式，確保試算表功能完整
 // ============================================
 
 function doPost(e) {
   try {
     var data = JSON.parse(e.postData.contents);
-    var sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName("現有庫存明細");
+    var ss = SpreadsheetApp.getActiveSpreadsheet();
+    var sheet = ss.getSheetByName("現有庫存明細");
 
     if (!sheet) {
       throw new Error("找不到 '現有庫存明細' 工作表，請確認分頁名稱。");
     }
 
     var newRow = sheet.getLastRow() + 1;
+    
+    // 準備資料與公式
+    var date = data.date || Utilities.formatDate(new Date(), "GMT+8", "yyyy/MM/dd");
+    var market = data.market || "台股";
+    var symbol = data.symbol; // 例如 TPE:2330 或 NASDAQ:NVDA
+    var shares = data.shares;
+    var price = data.price;
+    var currency = data.currency || (market === "美股" ? "USD" : "TWD");
+    
+    // 定義公式 (使用 R1C1 格式或動態字串)
+    var formulaName = "=IFERROR(GOOGLEFINANCE(C" + newRow + ", \"name\"), \"\")";
+    var formulaLivePrice = "=IFERROR(GOOGLEFINANCE(C" + newRow + "), \"\")";
+    var formulaExchangeRate = "=IF(H" + newRow + "=\"USD\", GOOGLEFINANCE(\"CURRENCY:USDTWD\"), 1)";
+    var formulaCostTwd = "=E" + newRow + " * F" + newRow + " * I" + newRow;
+    var formulaMarketValue = "=E" + newRow + " * G" + newRow + " * I" + newRow;
+    var formulaPnL = "=K" + newRow + " - J" + newRow;
 
-    // 只寫入「資料欄位」，跳過公式欄位（G, K, L, M）
-    sheet.getRange(newRow, 1).setValue(data.date);          // A: 扣入時間
-    sheet.getRange(newRow, 2).setValue(data.market);        // B: 市場
-    sheet.getRange(newRow, 3).setValue(data.symbol);        // C: 交易所代碼
-    sheet.getRange(newRow, 4).setValue(data.name);          // D: 標的名稱
-    sheet.getRange(newRow, 5).setValue(data.shares);        // E: 持有股數
-    sheet.getRange(newRow, 6).setValue(data.price);         // F: 成交單價
-    // G: 即時現價 — 跳過，保留公式自動沿用
-    sheet.getRange(newRow, 8).setValue(data.currency);      // H: 幣別
-    sheet.getRange(newRow, 9).setValue(data.exchange_rate); // I: 即時匯率
-    sheet.getRange(newRow, 10).setValue(data.cost_twd);     // J: 投入成本(台幣)
-    // K: 目前市值(台幣) — 跳過，保留公式自動沿用
-    // L: 未實現損益(1) — 跳過，保留公式自動沿用
-    // M: 未實現損益(2) — 跳過，保留公式自動沿用
+    // 逐格寫入 (對齊 A~L 欄位)
+    // A: 扣入時間 | B: 市場 | C: 交易所代碼 | D: 標的名稱(公式) | E: 持有股數 | F: 成交單價
+    // G: 即時現價(公式) | H: 幣別 | I: 即時匯率(公式) | J: 投入成本(公式) | K: 目前市值(公式) | L: 未實現損益(公式)
+    
+    var rowData = [
+      [
+        date,               // A
+        market,             // B
+        symbol,             // C
+        formulaName,        // D
+        shares,             // E
+        price,              // F
+        formulaLivePrice,   // G
+        currency,           // H
+        formulaExchangeRate,// I
+        formulaCostTwd,     // J
+        formulaMarketValue, // K
+        formulaPnL          // L
+      ]
+    ];
 
-    return ContentService.createTextOutput(JSON.stringify({ "status": "success" }))
-      .setMimeType(ContentService.MimeType.JSON);
+    sheet.getRange(newRow, 1, 1, 12).setValues(rowData);
+
+    return ContentService.createTextOutput(JSON.stringify({ 
+      "status": "success", 
+      "row": newRow,
+      "symbol": symbol 
+    })).setMimeType(ContentService.MimeType.JSON);
 
   } catch (error) {
     return ContentService.createTextOutput(JSON.stringify({
