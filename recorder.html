@@ -549,6 +549,30 @@
       cursor: not-allowed;
     }
 
+    .new-recording-btn {
+      width: 100%;
+      padding: 12px 24px;
+      background: var(--surface2);
+      color: var(--accent);
+      border: 2px solid var(--accent);
+      border-radius: 10px;
+      font-family: 'Noto Sans TC', sans-serif;
+      font-size: 14px;
+      font-weight: 500;
+      cursor: pointer;
+      transition: all 0.2s;
+      letter-spacing: 0.5px;
+    }
+
+    .new-recording-btn:hover {
+      background: var(--accent);
+      color: #fff;
+    }
+
+    .new-recording-btn:active {
+      transform: scale(0.98);
+    }
+
     .edit-hint {
       text-align: center;
       font-size: 11px;
@@ -607,6 +631,11 @@
             ✓ 確認儲存並同步至試算表
           </button>
         </div>
+        <div style="margin-top:12px; display:none;" id="newRecordingWrap">
+          <button class="new-recording-btn" id="newRecordingBtn" onclick="resetAndStartNewRecording()">
+            再錄一筆
+          </button>
+        </div>
       </div>
     </div>
 
@@ -652,6 +681,8 @@
     let pendingRawText = '';
     let pendingCleanText = '';
     let pendingAnalysis = null;
+    let currentStream = null;   // MediaStream，用於釋放舊資源
+    let audioCtxInstance = null; // AudioContext，用於關閉後重建
 
     // ── Visualizer setup ────────────────────────────────────
     const vizWrap = document.getElementById('visualizer');
@@ -713,21 +744,21 @@
       }
     }
 
-    // ── Start recording on load ──────────────────────────────
-    window.addEventListener('load', async () => {
+    // ── Start auto recording ─────────────────────────────────
+    async function startAutoRecording() {
       try {
-        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        currentStream = await navigator.mediaDevices.getUserMedia({ audio: true });
 
-        const audioCtx = new AudioContext();
-        const source = audioCtx.createMediaStreamSource(stream);
-        analyserNode = audioCtx.createAnalyser();
+        audioCtxInstance = new AudioContext();
+        const source = audioCtxInstance.createMediaStreamSource(currentStream);
+        analyserNode = audioCtxInstance.createAnalyser();
         analyserNode.fftSize = 128;
         source.connect(analyserNode);
 
         bars.forEach(b => b.classList.add('active'));
         animateBars();
 
-        mediaRecorder = new MediaRecorder(stream, { mimeType: getSupportedMime() });
+        mediaRecorder = new MediaRecorder(currentStream, { mimeType: getSupportedMime() });
         audioChunks = [];
 
         mediaRecorder.ondataavailable = e => {
@@ -749,7 +780,56 @@
         setStatus('error', '麥克風存取失敗');
         showError('請允許瀏覽器使用麥克風，然後重新整理頁面');
       }
-    });
+    }
+
+    // ── Start on page load ──────────────────────────────────
+    window.addEventListener('load', startAutoRecording);
+
+    // ── Reset and start new recording ───────────────────────
+    async function resetAndStartNewRecording() {
+      // 1. 停止並釋放舊麥克風串流
+      if (currentStream) {
+        currentStream.getTracks().forEach(t => t.stop());
+        currentStream = null;
+      }
+
+      // 2. 關閉舊 AudioContext
+      if (audioCtxInstance) {
+        await audioCtxInstance.close();
+        audioCtxInstance = null;
+        analyserNode = null;
+      }
+
+      // 3. 清除所有計時器與動畫
+      if (autoStopTimeout) {
+        clearTimeout(autoStopTimeout);
+        autoStopTimeout = null;
+      }
+      if (animFrameId) {
+        cancelAnimationFrame(animFrameId);
+        animFrameId = null;
+      }
+      stopTimer();
+      seconds = 0;
+      mediaRecorder = null;
+      audioChunks = [];
+
+      // 4. 重置 UI 狀態
+      document.getElementById('timer').textContent = '00:00';
+      document.getElementById('timer').classList.remove('recording');
+      document.getElementById('mainBtn').disabled = false;
+      document.getElementById('errorMsg').classList.remove('show');
+      document.getElementById('errorMsg').textContent = '';
+      document.getElementById('result').classList.remove('show');
+      document.getElementById('resultContent').innerHTML = '';
+      document.getElementById('newRecordingWrap').style.display = 'none';
+      idleBars();
+      bars.forEach(b => b.classList.remove('active'));
+
+      // 5. 開始新錄音
+      setStatus('recording', '錄音中');
+      await startAutoRecording();
+    }
 
     // ── Stop ────────────────────────────────────────────────
     function stopRecording() {
@@ -891,6 +971,8 @@
           confirmBtn.textContent = '✓ 已儲存' + (data.gas_synced ? '並同步' : '');
           confirmBtn.style.background = 'var(--success)';
           setStatus('success', '✓ 已儲存');
+          // 顯示「再錄一筆」按鈕
+          document.getElementById('newRecordingWrap').style.display = 'block';
         } else {
           confirmBtn.textContent = '✗ 儲存失敗，點擊重試';
           confirmBtn.style.background = 'var(--error)';
